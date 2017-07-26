@@ -1,0 +1,97 @@
+---
+title: "Course Project"
+output: pdf_document
+---
+
+# Sonar data set
+```{r, eval=FALSE, echo=FALSE}
+require(caret)
+library(mlbench)
+set.seed(998)
+data(Sonar)
+
+inTraining <- createDataPartition(Sonar$Class, p = .75, list = FALSE)
+training <- Sonar[ inTraining,]
+testing  <- Sonar[-inTraining,]
+
+fitControl <- trainControl(## 10-fold CV
+                           method = "repeatedcv",
+                           number = 10,
+                           ## repeated ten times
+                           repeats = 10)
+
+set.seed(825)
+gbmFit1 <- train(Class ~ ., data = training, 
+                 method = "gbm", 
+                 trControl = fitControl,
+                 ## This last option is actually one
+                 ## for gbm() that passes through
+                 verbose = TRUE)
+
+```
+
+
+# Load stuff
+```{r}
+require(caret)
+set.seed(42)
+
+train <- read.csv('data/pml-training.csv')
+# test <- read.csv('data/pml-testing.csv')
+```
+
+# Make mini trainingset
+```{r}
+no_na <- na.omit(train)
+
+# last 10 columns: (ncol(no_na)-10):ncol(no_na)
+mini <- head(no_na, 0)  # emtpy dataframe
+for (lev in levels(no_na$classe)) {
+  sub <- subset(no_na, classe == lev)[1:50,]
+  mini <- rbind(mini, sub)  # add subset to mini-trainingset
+}
+
+inTraining <- createDataPartition(mini$classe, p = .75, list = FALSE)
+minitrain <- mini[ inTraining,]
+minitest  <- mini[-inTraining,]
+```
+
+# Fit model
+```{r}
+set.seed(422)
+
+cv_params <- trainControl(method = "repeatedcv",  # 10-fold cross-validation
+                           number = 3,
+                           repeats = 1)
+
+rfmodel <- train(classe ~ .,
+                 data = minitrain,
+                 method = 'rf',
+                 trControl = cv_params,
+                 verbose = TRUE)
+
+```
+
+# Predict
+```{r}
+require(reshape2)
+require(plyr)
+truth <- data.frame(rownames(minitest), minitest[,'classe'])
+colnames(truth) <- c('id', 'classe')
+
+prob <- predict(rfmodel,
+                newdata = minitest,
+                type = 'prob')
+prob$id <- rownames(prob)
+m <- melt(prob, id.vars='id')
+
+pred <- ddply(m, 'id', function(x) {  # get prediction from probability
+  return(subset(x, value == max(x$value)))
+})
+colnames(pred) <- c('id', 'prediction', 'probability')
+compare <- merge(pred, truth, by='id')
+rate <- nrow(subset(compare, prediction == classe)) / nrow(compare)
+compare
+rate
+```
+
