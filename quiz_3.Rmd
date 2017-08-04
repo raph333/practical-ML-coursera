@@ -1,0 +1,130 @@
+---
+title: "quiz 3"
+output: html_document
+---
+
+
+# 1
+
+```{r}
+library(AppliedPredictiveModeling)
+data(segmentationOriginal)
+library(caret)
+set.seed(125)
+
+ds <- segmentationOriginal
+training <- ds[ds$Case == 'Train',]
+testing <- ds[ds$Case == 'Test',]
+
+modelFit <- train(Class ~ ., method='rpart', data=training)
+modelFit$finalModel
+```
+Solution to multiple choice:
+a: PS
+b: WS
+c: PS
+d: impossible to predict
+
+
+```{r}
+plot(modelFit$finalModel, uniform = TRUE, main='Classification Tree')
+text(modelFit$finalModel, use.n = TRUE, all=TRUE, cex=0.5)
+```
+```{r}
+TotalIntench2 <- c(23000, 50000, 57000, NA)
+FiberWidthCh1 <- c(10, 10, 8, 8)
+
+```
+
+
+# 3
+
+```{r}
+load('olive.rda')
+olive <- olive[,-1]
+
+modelFit <- train(Area ~ ., method='rpart', data=olive)
+modelFit$finalModel
+```
+
+```{r}
+new = as.data.frame(t(colMeans(olive)))
+predict(modelFit, newdata = new)
+```
+The problem: Area is of type double
+
+Convert 'Area' to factor and retrain the model:
+```{r}
+olive$Area <- as.factor(olive$Area)
+modelFit <- train(Area ~ ., method='rpart', data=olive)
+
+predict(modelFit, newdata = new)
+```
+
+
+# 4
+
+```{r}
+library(ElemStatLearn)
+data(SAheart)
+set.seed(8484)
+train = sample(1:dim(SAheart)[1],size=dim(SAheart)[1]/2,replace=F)
+trainSA = SAheart[train,]
+testSA = SAheart[-train,]
+
+# train model:
+set.seed(13234)
+#modelFit <- train(chd ~ c('age', 'alcohol', 'obesity', 'tobacco', 'typea', 'ldl'),
+#                  method='glm', family='binomial', data=trainSA)
+modelFit <- train(chd ~ ., method='glm', family='binomial',
+                  data=trainSA[,c('chd', 'age', 'alcohol', 'obesity', 'tobacco', 'typea', 'ldl')])
+
+# predict test set:
+probability <- predict(modelFit, newdata = testSA)
+```
+
+Evaluate:
+```{r}
+# predict test set:
+probability <- predict(modelFit, newdata = testSA)
+eval = data.frame(probability, testSA$chd)
+eval$prediction <- (eval$probability > 0.5)*1  # convert boolean to integer
+missclass_testset <- nrow(subset(eval, prediction != testSA.chd)) / nrow(eval)
+cat('missclassification rate on test set: ', missclass_testset)
+
+# predict training set:
+probability <- predict(modelFit, newdata = trainSA)
+eval = data.frame(probability, trainSA$chd)
+eval$prediction <- (eval$probability > 0.5)*1
+missclass_trainset <- nrow(subset(eval, prediction != trainSA.chd)) / nrow(eval)
+cat('missclassification rate on training set: ', missclass_trainset)
+
+#missClass = function(values,prediction) {sum(((prediction > 0.5)*1) != values)/length(values)}
+#missClass(probability, testSA$chd)
+```
+
+
+# 5
+
+```{r}
+require(randomForest)
+data(vowel.train)
+data(vowel.test)
+
+vowel.test$y <- as.factor(vowel.test$y)
+vowel.train$y <- as.factor(vowel.train$y)
+set.seed(33833)
+
+modelFit <- randomForest(y=vowel.train$y, x=vowel.train[-1])
+modelFit
+```
+Feature importance:
+```{r}
+imp <- varImp(modelFit)
+feature_imp <- data.frame(row.names(imp), imp)
+colnames(feature_imp) <- c('feature', 'importance')
+feature_imp <- feature_imp[with(feature_imp, order(-importance)), ]
+feature_imp
+```
+
+
