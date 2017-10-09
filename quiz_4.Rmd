@@ -1,0 +1,165 @@
+---
+title: "Quiz week 4"
+output: html_document
+---
+
+
+# Question 1
+
+```{r, message=F}
+library(ElemStatLearn)
+data(vowel.train)
+data(vowel.test)
+require(caret)
+
+vowel.test$y <- as.factor(vowel.test$y)
+vowel.train$y <- as.factor(vowel.train$y)
+set.seed(33833)
+```
+
+```{r, message=F}
+modelRF <- train(y ~ ., data=vowel.train, method='rf')
+modelRF
+
+modelGBM <- train(y ~ ., data=vowel.train, method='gbm')
+modelGBM
+```
+```{r}
+predRF <- predict(modelRF, newdata=vowel.test[,-1])
+predGBM <- predict(modelGBM, newdata=vowel.test[,-1])
+```
+
+```{r}
+val <- data.frame(vowel.test$y, predRF, predGBM)
+colnames(val) <- c('truth', 'predRF', 'predGBM')
+accRF <- nrow(subset(val, truth == predRF)) / nrow(val)
+accGBM <- nrow(subset(val, truth == predGBM)) / nrow(val)
+agree <- subset(val, predRF == predGBM)
+accAgree <- nrow(subset(agree, predRF == truth)) / nrow(agree)
+
+cat('RF-accuracy: ', accRF)
+cat('\nGBM-accuracy: ', accGBM)
+cat('\nAgreement-accuracy: ', accAgree)
+```
+
+# Question 2
+
+```{r, message=F}
+library(caret)
+library(gbm)
+set.seed(3433)
+library(AppliedPredictiveModeling)
+data(AlzheimerDisease)
+
+adData = data.frame(diagnosis,predictors)
+inTrain = createDataPartition(adData$diagnosis, p = 3/4)[[1]]
+training = adData[ inTrain,]
+testing = adData[-inTrain,]
+```
+
+```{r, message=F}
+set.seed(62433)
+modelRF <- train(diagnosis ~ ., data=training, method='rf')
+modelGBM <- train(diagnosis ~ ., data=training, method='gbm')
+modelLDA <- train(diagnosis ~ ., data=training, method='lda')
+```
+
+```{r}
+predRF <- predict(modelRF, newdata=testing[,-1])
+predGBM <- predict(modelGBM, newdata=testing[,-1])
+predLDA <- predict(modelLDA, newdata=testing[,-1])
+```
+
+
+```{r}
+all_pred <- data.frame(diagonsis=testing$diagnosis, predRF, predGBM, predLDA)
+colnames(all_pred) <- c('truth', 'RF', 'GBM', 'LDA')
+
+accRF <- nrow(subset(all_pred, truth == RF)) / nrow(all_pred)
+accGBM <- nrow(subset(all_pred, truth == GBM)) / nrow(all_pred)
+accLDA <- nrow(subset(all_pred, truth == LDA)) / nrow(all_pred)
+
+cat('\nRF-accuracy: ', accRF)
+cat('\nGBM-accuracy: ', accGBM)
+cat('\nLDA-accuracy: ', accLDA)
+```
+
+```{r}
+combModelFit <- train(truth ~ ., data=all_pred, method='rf')
+predComb <- predict(combModelFit, all_pred)
+
+all_pred$stack <- predComb
+accCombined <- nrow(subset(all_pred, truth == stack)) / nrow(all_pred)
+cat('combined Model accuracy: ', accCombined)
+```
+
+# Question 3
+
+```{r, message=F}
+set.seed(3523)
+library(AppliedPredictiveModeling)
+data(concrete)
+
+inTrain = createDataPartition(concrete$CompressiveStrength, p = 3/4)[[1]]
+training = concrete[ inTrain,]
+testing = concrete[-inTrain,]
+```
+
+```{r}
+set.seed(233)
+
+modelLasso <- train(CompressiveStrength ~ ., data=training, method='lasso')
+predict(modelLasso$finalModel, type='coefficients')
+```
+
+
+# Question 4
+```{r, message=F}
+library(lubridate) # For year() function below
+dat = read.csv("~/Desktop/gaData.csv")
+
+training = dat[year(dat$date) < 2012,]
+testing = dat[(year(dat$date)) > 2011,]
+tstrain = ts(training$visitsTumblr)
+```
+
+```{r, message=F}
+require(forecast)
+
+modelFC <- bats(tstrain)
+fc <- forecast(modelFC, 235)
+
+df <- data.frame(truth=testing$visitsTumblr, lower=fc$lower[,2], upper=fc$upper[,2])
+df$interval <- as.integer( ((df$truth > df$lower) & (df$truth < df$upper)) )
+nrow(subset(df, interval == 1)) / nrow(df)
+```
+
+# Question 5
+
+```{r}
+set.seed(3523)
+library(AppliedPredictiveModeling)
+data(concrete)
+
+inTrain = createDataPartition(concrete$CompressiveStrength, p = 3/4)[[1]]
+training = concrete[ inTrain,]
+testing = concrete[-inTrain,]
+```
+
+```{r}
+set.seed(325)
+require(e1071)
+
+modelSVM <- svm(CompressiveStrength ~ ., data=training)
+```
+```{r}
+predSVM <- predict(modelSVM, newdata=testing[-ncol(testing)])
+
+df <- data.frame(truth=testing$CompressiveStrength, predSVM)
+df$residuals <- abs(df$truth - df$predSVM)
+df$squared_res <- df$residuals**2
+
+RMSD <- sqrt( sum(df$squared_res)/nrow(df) )
+RMSD
+```
+

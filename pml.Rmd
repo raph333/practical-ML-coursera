@@ -3,95 +3,214 @@ title: "Course Project"
 output: pdf_document
 ---
 
-# Sonar data set
-```{r, eval=FALSE, echo=FALSE}
-require(caret)
-library(mlbench)
-set.seed(998)
-data(Sonar)
-
-inTraining <- createDataPartition(Sonar$Class, p = .75, list = FALSE)
-training <- Sonar[ inTraining,]
-testing  <- Sonar[-inTraining,]
-
-fitControl <- trainControl(## 10-fold CV
-                           method = "repeatedcv",
-                           number = 10,
-                           ## repeated ten times
-                           repeats = 10)
-
-set.seed(825)
-gbmFit1 <- train(Class ~ ., data = training, 
-                 method = "gbm", 
-                 trControl = fitControl,
-                 ## This last option is actually one
-                 ## for gbm() that passes through
-                 verbose = TRUE)
-
-```
-
 
 # Load stuff
 ```{r}
 require(caret)
 set.seed(42)
 
-train <- read.csv('data/pml-training.csv')
-# test <- read.csv('data/pml-testing.csv')
+ds <- read.csv('data/pml-training.csv')
+test <- read.csv('data/pml-testing.csv')
 ```
 
-# Make mini trainingset
-```{r}
-no_na <- na.omit(train)
+# Exploratory data analysis
 
-# last 10 columns: (ncol(no_na)-10):ncol(no_na)
-mini <- head(no_na, 0)  # emtpy dataframe
-for (lev in levels(no_na$classe)) {
-  sub <- subset(no_na, classe == lev)[1:50,]
+There are 19622 observations of barbell exercises in the dataset (one observation being one repetition). The number of features is 159. However, the data is not complete. All except 406 observations contain missing values. Before starting to analyse feature importance and contemplating imputation of missing values, I fitted a simple random forest model to the small data-set of complete observations. A runtime of 5 minutes on this small dataset (using 2-fold cross-validation) revealed it wouldn't be computationally feasible to use all oberservations and all features for fitting a model. See below
+
+Furthermore, I noticed that the dataset is ordered, with all the class-A observations at the top of the dataset, followed by class-B observations and so on. Therefore, when training a model, the index-variable X which just indicates the position of the observation would be the mosts important 'feature' if it was defined as such. Of course, in the test-set or a real-word dataset, the data will not be ordered by class. Therefore, I make sure not to include index variable 'X' in the feature list.
+
+To be sure to eliminate any effect of the order of observations in the trainingset, I randomly shuffle the rows.
+
+```{r, echo=F}
+feat <- colnames(ds)
+feat <- colnames(ds)[!colnames(ds) %in% c('X', 'classe', 'user_name',
+                                                'raw_timestamp_part_1', 'raw_timestamp_part_2', 'cvtd_timestamp',
+                                                'new_window', 'num_window')]
+
+ds <- ds[sample(nrow(ds)),]  # randomly shuffle rows
+```
+
+
+```{r, echo=F}
+ds_complete <- na.omit(ds)
+
+# last 10 columns: (ncol(ds_complete)-10):ncol(ds_complete)
+mini <- head(ds_complete, 0)  # emtpy dataframe
+for (lev in levels(ds_complete$classe)) {
+  sub <- subset(ds_complete, classe == lev)[1:50,]
   mini <- rbind(mini, sub)  # add subset to mini-trainingset
 }
+
+#mini <- ds_complete
 
 inTraining <- createDataPartition(mini$classe, p = .75, list = FALSE)
 minitrain <- mini[ inTraining,]
 minitest  <- mini[-inTraining,]
+truth <- data.frame(rownames(minitest), minitest[,'classe'])
+colnames(truth) <- c('id', 'classe')
 ```
 
-# Fit model
+## Feature importance
+
+The quick, exploratory model-fitting on the small, complete dataset revealed that removing unimportant features is not only desirable from a machine learning perspective - it also necessary for computational reasons.
+
+Hence, I used the varImp-function to determine feature importance in the preliminary random forest model on the small, complete dataset.
+
+
+# Set up parallelization
+
 ```{r}
-set.seed(422)
+#library(parallel)
+#library(doParallel)
+#cluster <- makeCluster(detectCores() - 1)  # leave 1 core for operating system
+#registerDoParallel(cluster)
+```
 
-cv_params <- trainControl(method = "repeatedcv",  # 10-fold cross-validation
-                           number = 3,
-                           repeats = 1)
 
-rfmodel <- train(classe ~ .,
-                 data = minitrain,
+# Select features
+
+good link about runtime:
+https://www.quora.com/What-is-the-time-complexity-of-Random-Forest-both-building-the-model-and-classification
+
+# Fit preliminary model
+```{r, message=F}
+set.seed(422)  # make model-fitting reproducible
+
+cv_params <- trainControl(method = 'repeatedcv',
+                          number = 2,  # number of folds  # change to 4 later
+                          repeats = 1,  # number of times, the cv is repeated
+                          allowParallel = TRUE)
+
+RFmodel <- train(classe ~ .,
+                 data = minitrain[,c(feat, 'classe')],  # only features and outcome variable (no index, etc.)
                  method = 'rf',
                  trControl = cv_params,
-                 verbose = TRUE)
-
+                 importance = TRUE,  # for feature importance
+                 verbose = FALSE)
 ```
 
+```{r}
+feat_imp <- data.frame(varImp(RFmodel)$importance)
+feat_imp['average'] <- rowMeans(feat_imp[,c('A', 'B', 'C', 'D', 'E')])
+feat_imp <- feat_imp[with(feat_imp, order(average, decreasing=TRUE)),]
+head(feat_imp, 30)
+```
 # Predict
 ```{r}
 require(reshape2)
 require(plyr)
-truth <- data.frame(rownames(minitest), minitest[,'classe'])
-colnames(truth) <- c('id', 'classe')
 
-prob <- predict(rfmodel,
-                newdata = minitest,
-                type = 'prob')
-prob$id <- rownames(prob)
-m <- melt(prob, id.vars='id')
+trainRF <- function(trainingdata, features) {
+  cv_params <- trainControl(method = 'repeatedcv',
+                          number = 4,  # number of folds
+                          repeats = 1,  # number of times, the cv is repeated
+                          allowParallel = TRUE)
+  RFmodel <- train(classe ~ .,
+                 data = trainingdata[,c(features, 'classe')],  # only features and outcome variable (no index, etc.)
+                 method = 'rf',
+                 trControl = cv_params,
+                 importance = TRUE,  # for feature importance
+                 verbose = FALSE)
+  return(RFmodel)
+}
 
-pred <- ddply(m, 'id', function(x) {  # get prediction from probability
-  return(subset(x, value == max(x$value)))
-})
-colnames(pred) <- c('id', 'prediction', 'probability')
-compare <- merge(pred, truth, by='id')
-rate <- nrow(subset(compare, prediction == classe)) / nrow(compare)
-compare
-rate
+get_probabilities <- function(testdata, features, my_model) {
+  prob <- predict(my_model,
+                  newdata = testdata[,features],
+                  type = 'prob')
+  prob$id <- rownames(prob)
+  long <- melt(prob, id.vars='id')
+  return(long[order(long$id),])
+}
+
+get_predictions <- function(probabilities) {  # long format dataframe of probabilities
+  pred <- ddply(probabilities, 'id', function(x) {  # get prediction from probability
+    return(head(subset(x, value == max(x$value)), 1))  # in case of equal probabilites: take first
+  })
+  colnames(pred) <- c('id', 'prediction', 'probability')
+  return(pred)
+}
+
+evaluate <- function(predictions, testdata) {
+  truth <- data.frame(rownames(testdata), testdata[,'classe'])
+  colnames(truth) <- c('id', 'classe')
+  compare <- merge(predictions, truth, by='id')
+  accuracy <- nrow(subset(compare, prediction == classe)) / nrow(compare)
+  return(list(compare, accuracy))
+}
+
+get_accuracy <- function(testdata, features, my_model) { # just calculate accuracy; does not return predictions
+  prob <- get_probabilities(testdata, features, my_model)
+  pred <- get_predictions(prob)
+  return(evaluate(pred, testdata)[[2]])
+}
+
+#compare <- merge(pred, truth, by='id')
+#acc <- nrow(subset(compare, prediction == classe)) / nrow(compare)
+#compare
+#cat('accuracy: ', acc)
 ```
 
+```{r}
+top50 <- rownames(head(feat_imp, 50))
+top30 <- rownames(head(feat_imp, 30))
+top20 <- rownames(head(feat_imp, 20))
+top10 <- rownames(head(feat_imp, 10))
+
+#RFmodel <- trainRF(minitrain, top10)
+#prob <- get_probabilities(minitest, top10, RFmodel)
+#pred <- get_predictions(prob)
+#eval <- evaluate(pred, minitest)
+#acc <- eval[[2]]
+
+get_accuracy_for_feature_subsets <- function(trainingdata, testdata, feature_importance) {
+  top_n_featues <- (1:14)*5  # which top n features to test
+  accuracy <- c()
+  for (i in top_n_featues) {
+    top_features <- rownames(head(feature_importance, i))
+    RFmodel <- trainRF(trainingdata, top_features)
+    accuracy <- c(accuracy, get_accuracy(testdata, top_features, RFmodel))
+  }
+  return(data.frame(top_n_featues, accuracy))
+}
+```
+
+```{r}
+feat_acc <- get_accuracy_for_feature_subsets(minitrain, minitest, feat_imp)
+feat_acc
+```
+
+
+# k-nearest neighbout imputation
+```{r}
+na_count_col <- apply(ds, 2, function(x) sum(is.na(x)))  # count number of missing values per column
+na_cols <- names(na_count_col[na_count_col != 0])
+complete_cols <- names(na_count_col[na_count_col == 0])
+
+feat_complete <- feat[feat %in% complete_cols]
+top50_complete <- top50[top50 %in% complete_cols]
+
+knn_imp_model <- preProcess(ds_complete, method = 'knnImpute')
+ds_imp <- predict(knn_imp_model, ds)
+```
+
+# Fit model with imputed features
+```{r}
+top_imputed_features <- top50[top50 %in% complete_cols]
+
+ds2 <- ds_imp[, c(top_imputed_features, 'classe')]
+inTraining <- createDataPartition(ds2$classe, p = .75, list = FALSE)  # split the training data-set
+training <- ds2[ inTraining,]
+validation  <- ds2[-inTraining,]
+
+RFmodel <- trainRF(training, top_imputed_features)
+prob <- get_probabilities(training, top_imputed_features, RFmodel)
+pred <- get_predictions(prob)
+eval <- evaluate(pred, minitest)
+acc <- get_accuracy(validation, top_imputed_features, RFmodel)
+acc
+
+# terminate parallelization:
+#stopCluster(cluster)
+#registerDoSEQ()
+```
