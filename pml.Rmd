@@ -11,7 +11,7 @@ require(ggplot2)
 require(reshape2)
 require(plyr)
 
-#set.seed(42)  # make results reproducible
+set.seed(42)  # make results reproducible
 
 ds <- read.csv('data/pml-training.csv')
 test <- read.csv('data/pml-testing.csv')
@@ -33,9 +33,9 @@ na_per_col$percent <- (na_per_col$na_count / nrow(ds)) * 100
 
 g <- ggplot(data=na_per_col) +
   geom_histogram( aes(x=percent), bins=40 ) +
-  xlab('% of NA-values') +
+  xlab('% NA-values') +
   ylab('number of columns') +
-  ggtitle('Percent of NA-values in columns') +
+  ggtitle('Percent NA-values in columns') +
   theme(plot.title = element_text(size=17, face='bold', hjust=0.5))
 g
 ```
@@ -43,7 +43,7 @@ g
 
 There are 19622 observations of barbell exercises in the dataset (one observation being one repetition). The number of features is 158. However, the data is not complete. All except 406 observations contain missing values.
 
-The missing values are not distributed uniformely over the columns. 93 columns have no missing values at all. On the other hand, 67 columns have close to 100% of missing values (almost as if they were deleted on purpose... :-) ). With such a high fraction of missing values, one can already suspect that 67 of the features will not be of much use for the prediction. Nevertheless, for the sake of gathering experience, I decided to analyze all features.
+The missing values are not distributed uniformly over the columns. 93 columns have no missing values at all. On the other hand, 67 columns have close to 100% of missing values (almost as if they were deleted on purpose... :-) ). With such a high fraction of missing values, one can already suspect that 67 of the features will not be of much use for the prediction. Nevertheless, for the sake of gathering experience, I decided to analyze all features.
 
 ```{r, echo=F}
 feat <- colnames(ds)
@@ -105,24 +105,15 @@ get_accuracy <- function(testdata, features, my_model) { # just calculate accura
 
 # Feature importance
 
-A runtime of about 5 minutes on this small dataset (using 4-fold cross-validation) revealed it wouldn't be computationally feasible to use all oberservations and all features for fitting a model. Hence, even if the whole dataset was complete, I would have to select a subset of features.
+A runtime of about 5 minutes on this small dataset (using 4-fold cross-validation) revealed it wouldn't be computationally feasible to use all observations and all features for fitting a model. Hence, even if the whole dataset was complete, I would have to select a subset of features.
 
-The feature selection process below is very simple. Fist, a preliminary random forest model was fitted using all features and the importance of the features was determined using the verImp-function. Then, a model was fit to the small training set using only the top 5, top 10, top 15, etc. features.
+The feature selection process below is very simple. Fist, a preliminary random forest model was fitted using all features and the importance of the features was determined using the varImp-function. Then, a model was fit to the small training set using only the top 5, top 10, top 15, etc. features.
 
 ```{r}
-#mini <- head(ds_complete, 0)  # emtpy dataframe
-#for (lev in levels(ds_complete$classe)) {
-#  sub <- subset(ds_complete, classe == lev)[1:50,]
-#  mini <- rbind(mini, sub)  # add subset to mini-trainingset
-#}
-#mini <- ds_complete
-
 # Split the small, complete dataset of 406 rows into a training set and a test set:
-inTraining <- createDataPartition(ds_complete$classe, p = .75, list = FALSE)
-minitrain <- ds_complete[ inTraining,]
-minitest  <- ds_complete[-inTraining,]
-#truth <- data.frame(rownames(minitest), minitest[,'classe'])
-#colnames(truth) <- c('id', 'classe')
+inTraining_mini <- createDataPartition(ds_complete$classe, p = .75, list = FALSE)
+minitrain <- ds_complete[ inTraining_mini,]
+minitest  <- ds_complete[-inTraining_mini,]
 ```
 
 good link about runtime:
@@ -143,7 +134,7 @@ top30 <- rownames(head(feat_imp, 30))
 top20 <- rownames(head(feat_imp, 20))
 top10 <- rownames(head(feat_imp, 10))
 
-head(feat_imp, 10)
+feat_imp[0:10,'average', drop=FALSE]
 ```
 
 
@@ -178,12 +169,12 @@ g <- ggplot(data=feat_acc, aes(x=top_n_features, y=accuracy)) +
 g
 ```
 
-The plot above shows, that the accuracy inceases with the use of more features until about 20 features. Then, the addition of more featues does not increase the accuracy. The small differences in accuracy when using 20 or more features represent only the random fluctations during fitting of a random forest model and can be safely ignored.
+The plot above shows, that the accuracy increases with the use of more features until about 20 features. Then, the addition of more features does not increase the accuracy. The small differences in accuracy when using 20 or more features represent only the random fluctuations during fitting of a random forest model and can be safely ignored.
 
 
 # k-nearest neighbour imputation
 
-Due large fraction of missing values in many features, impuation cannot be expected to work very well. Nevertheless, a k-nearest neigbour imputation model was fitted on the small dataset of complete values (406 rows). Then, using this model, the missing value in the whole dataset (19622 rows) were imputed.
+Due large fraction of missing values in many features, imputation cannot be expected to work very well. Nevertheless, out of curiosity, a k-nearest neigbor imputation model was fitted on the small dataset of complete values (406 rows). Then, using this model, the missing value in the whole dataset (19622 rows) were imputed.
 
 ```{r}
 knn_imp_model <- preProcess(ds_complete, method = 'knnImpute')
@@ -194,8 +185,13 @@ ds_imp <- predict(knn_imp_model, ds)
 ## Split whole dataset into training and validation set
 
 ```{r}
-inTraining <- createDataPartition(ds$classe, p = .75, list = FALSE)  # split the training data-set in
+inTraining <- createDataPartition(ds$classe, p = .75, list = FALSE)  # split the training data-set
 
+training_imp <- ds_imp[inTraining,]  # training data with imputed values
+validation_imp  <- ds_imp[-inTraining,]
+
+training <- ds[inTraining,]  # training data with missing values
+validation  <- ds[-inTraining,]
 ```
 
 ## Fit model with imputed features
@@ -203,29 +199,46 @@ inTraining <- createDataPartition(ds$classe, p = .75, list = FALSE)  # split the
 ```{r}
 top_imputed_features <- top20
 
-training_imp <- ds_imp[inTraining,]
-validation_imp  <- ds_imp[-inTraining,]
-
 RFmodel_imp <- trainRF(training_imp, top_imputed_features)
 prob <- get_probabilities(validation_imp, top_imputed_features, RFmodel_imp)
 pred <- get_predictions(prob)
 eval <- evaluate(pred, validation_imp)
-acc <- eval[[2]]
-acc
+accuracy <- eval[[2]]
+cat('Accuracy of the random forest model trained with the top 20 features (15 with imputed values): ', accuracy)
 ```
+
+Using the top 20 features - including 15 with mostly imputed values- gives a worse accuracy than just using the best 16 complete features (see next section). The reason for this is mostly the fact that all columns with missing values consist of 99% missing values and only 1% real values. Therefore, the KNN-imputation model is likely to be inaccurate due to a lack of training data. If the missing values were more sparse, it is conceivable that imputation would improve prediction accuracy. In a real-word dataset it would be more likely to find at least a few missing values in every feature and (column) and maybe even a few missing values for each data point (row). In such cases, imputation is not only likely perform better but also necessary because because excluding all data points with missing values would leave only a fraction of the original dataset.
 
 ## Fit model with real values only
 ```{r}
 feat_complete <- feat[feat %in% complete_cols]  # features without missing values
 top_complete_features <- top50[top50 %in% complete_cols]
 
-training <- ds[inTraining,]
-validation  <- ds[-inTraining,]
-
 RFmodel <- trainRF(training, top_complete_features)
 prob <- get_probabilities(validation, top_complete_features, RFmodel)
 pred <- get_predictions(prob)
 eval <- evaluate(pred, validation)
-acc <- eval[[2]]
-acc
+accuracy <- eval[[2]]
+cat('Accuracy of the random forest model trained with the top 16 complete features: ', accuracy)
 ```
+
+As the prediction was made on a validation set not used in training, the expected accuracy of the random forest model on new data is roughly the same as the accuracy on the validation set.
+
+However, the accuracy on new data could be lower, if the new data is of lower quality (e.g. contains many missing values or is strongly biased). Furthermore, it is important to note that the random element of random forest models leads to random fluctuations of prediction accuracy as well. Even if a new model is built on the same training data, it will have a slightly different prediction accuracy than the old model. To avoid this, a random seed is set at the beginning of the script. This sep ensures that each time a model is trained on the same data, it is exactly the same as the previous one and thus has the same prediction accuracy.
+
+# Predict test-set
+
+```{r}
+prob <- get_probabilities(test, top_complete_features, RFmodel)  # 20-row test set
+pred <- get_predictions(prob)
+cat('Predicions of the 20-row test-set:')
+pred
+```
+
+
+# Conclusion
+
+## Accuracy
+The prediction accuracy is high even though the random forest model is rather simple could be improved in many ways. A possible explanation for the good results is that the fife ways of performing the barbell exercise are quite different from each other. This is not surprising as the study participants have been instructed to either perform the exercise correctly (class A) or deliberately make a specific mistake (class B to E). A more difficult task would be to have all participants try to do the exercise correctly, have an expert judge how well they do and then use this data to train a model to predict how well the barbell exercise is done. The mistakes would not be as obvious as when made on purpose. In such a realistic setting, prediction accuracy would probably be lower than on this data-set.
+
+
