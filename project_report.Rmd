@@ -1,5 +1,5 @@
 ---
-title: 'Course Project: with code'
+title: 'Course Project: summary without code'
 output:
   html_document:
     df_print: paged
