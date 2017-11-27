@@ -2,7 +2,7 @@
 
 author: Raphael Peer
 
-To view the project report without code online, please follow [this link](https://raph333.github.io/practical-ML-coursera/)
+To view the project report online, please follow [this link](https://raph333.github.io/practical-ML-coursera/)
 
 More information about the course and the assignment is avaiable the [course-homepage](https://www.coursera.org/learn/practical-machine-learning)
 
@@ -11,5 +11,5 @@ The analysis can be repeated using the knir-file 'project-report.Rmd'. If you cl
 
 ## View the project report
 
-* The project report without code is available as html-file (project_report_without_code.html) or can be viewed online [here](https://raph333.github.io/practical-ML-coursera/)
-* The project report including the R-code is also available as html-file (project_report_with_code.html) 
+* The project report summary without code is available as html-file (project_report_without_code.html)
+* The project report including the R-code is also available as html-file (project_report_with_code.html) or can be viewed online [here](https://raph333.github.io/practical-ML-coursera/)
