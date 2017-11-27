@@ -1,6 +1,17 @@
-## Welcome to GitHub Pages
+# Course project for Coursera's practical machine learning
 
 You can use the [editor on GitHub](https://github.com/raph333/practical-ML-coursera/edit/gh-pages/README.md) to maintain and preview the content for your website in Markdown files.
+
+To view the project report without code online: please follow [this link](https://raph333.github.io/practical-ML-coursera/)
+
+## Run the code
+The analysis can be repeated using the knir-file 'project-report.Rmd'. If you clone the repository, you also obtain all the required data is in the folder 'data'. You may need to install a few packages and then you're ready to go.
+
+## View the project report
+
+* The project report without code is available as html-file (project_report_without_code.html) or can be viewed online [here](https://raph333.github.io/practical-ML-coursera/)
+* The project report including the R-code is also available as html-file (project_report_with_code.html) 
+
 
 Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
 
