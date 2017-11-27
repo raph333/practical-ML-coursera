@@ -1,24 +1,31 @@
 ---
 title: "Course Project"
-output: pdf_document
+output:
+  html_document:
+    df_print: paged
 ---
 
+```{r global_options, include=FALSE}
+rm(list=ls()) ### To clear namespace
+library(knitr)
+opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+               echo=FALSE, warning=FALSE, message=FALSE)
+```
 
-# Load stuff
+
+# Exploratory data analysis
+
 ```{r, message=F}
 require(caret)
 require(ggplot2)
 require(reshape2)
 require(plyr)
 
-set.seed(42)  # make results reproducible
+set.seed(43)  # make results reproducible
 
 ds <- read.csv('data/pml-training.csv')
 test <- read.csv('data/pml-testing.csv')
 ```
-
-
-# Exploratory data analysis
 
 ```{r}
 ds_complete <- na.omit(ds)
@@ -41,18 +48,17 @@ g
 ```
 
 
-There are 19622 observations of barbell exercises in the dataset (one observation being one repetition). The number of features is 158. However, the data is not complete. All except 406 observations contain missing values.
+There are 19622 observations of barbell exercises in the dataset (one observation being one repetition). The number of columns is 160. However, the data is not complete. All, except 406 observations, contain missing values.
 
 The missing values are not distributed uniformly over the columns. 93 columns have no missing values at all. On the other hand, 67 columns have close to 100% of missing values (almost as if they were deleted on purpose... :-) ). With such a high fraction of missing values, one can already suspect that 67 of the features will not be of much use for the prediction. Nevertheless, for the sake of gathering experience, I decided to analyze all features.
 
 ```{r, echo=F}
-feat <- colnames(ds)
 feat <- colnames(ds)[!colnames(ds) %in% c('X', 'classe', 'user_name',
                                                 'raw_timestamp_part_1', 'raw_timestamp_part_2', 'cvtd_timestamp',
                                                 'new_window', 'num_window')]
 ```
 
-It has to be noted that the dataset is ordered, with all the class-A observations at the top of the dataset, followed by class-B observations and so on. Therefore, when fitting a preliminary model, the index-variable X - which just indicates the position of the observation in the dataframe - was identified as the most important 'feature'. Of course, in the test-set or a real-word dataset, the data will not be ordered by class. Therefore, I make sure not to include index variable 'X' in the feature list. For the same reason, I excluded the timestamp-columns from the features. The name of the person performing the exercise was also not used as a feature. It is possible that the name is a useful feature for prediction of the test set, because the test set was collected with the same people as the training set. However, the study aims to identify general patterns which do not depend on the person doing the exercise. Therefore, the information who performed the exercise is intentionally ignored in the model.
+It has to be noted that the dataset is ordered, with all the class-A observations at the top of the dataset, followed by class-B observations and so on. Therefore, when fitting a preliminary model, the index-variable X - which just indicates the position of the observation in the dataframe - was identified as the most important 'feature'. Of course, in the test-set or a real-word dataset, the data will not be ordered by class. Therefore, I make sure not to include index variable 'X' in the feature list. For the same reason, I excluded the timestamp-columns from the features. The name of the person performing the exercise was also not used as a feature. It is possible that the name is a useful feature for prediction of the test set, because the test set was collected with the same people as the training set. However, the study aims to identify general patterns which do not depend on the person doing the exercise. Therefore, the information who performed the exercise is intentionally ignored in the model. After excluding these columns, there are 152 features left to choose from.
 
 
 # Functions for fitting and evaluating random forest models
@@ -96,7 +102,7 @@ evaluate <- function(predictions, testdata) {  #
   return(list(compare, accuracy))
 }
 
-get_accuracy <- function(testdata, features, my_model) { # just calculate accuracy (predictions not returned)
+get_accuracy <- function(testdata, features, my_model) {  # just calculate accuracy (no predictions returned)
   prob <- get_probabilities(testdata, features, my_model)
   pred <- get_predictions(prob)
   return(evaluate(pred, testdata)[[2]])
@@ -107,7 +113,7 @@ get_accuracy <- function(testdata, features, my_model) { # just calculate accura
 
 A runtime of about 5 minutes on this small dataset (using 4-fold cross-validation) revealed it wouldn't be computationally feasible to use all observations and all features for fitting a model. Hence, even if the whole dataset was complete, I would have to select a subset of features.
 
-The feature selection process below is very simple. Fist, a preliminary random forest model was fitted using all features and the importance of the features was determined using the varImp-function. Then, a model was fit to the small training set using only the top 5, top 10, top 15, etc. features.
+The feature selection process below is very simple. First, a preliminary random forest model was fitted on the small, complete data set using all features and the importance of the features was determined using the varImp-function. Then, a model was fit using only the top 5, top 10, top 15, etc. features.
 
 ```{r}
 # Split the small, complete dataset of 406 rows into a training set and a test set:
@@ -116,8 +122,6 @@ minitrain <- ds_complete[ inTraining_mini,]
 minitest  <- ds_complete[-inTraining_mini,]
 ```
 
-good link about runtime:
-https://www.quora.com/What-is-the-time-complexity-of-Random-Forest-both-building-the-model-and-classification
 
 ### Fit preliminary model to analyze feature importance
 ```{r, message=F}
@@ -126,15 +130,14 @@ RFmodel_prelim <- trainRF(minitrain, feat)
 
 ```{r}
 feat_imp <- data.frame(varImp(RFmodel_prelim)$importance)
-feat_imp['average'] <- rowMeans(feat_imp[,c('A', 'B', 'C', 'D', 'E')])
-feat_imp <- feat_imp[with(feat_imp, order(average, decreasing=TRUE)),]
+feat_imp['feature'] <- rownames(feat_imp)
+feat_imp['importance'] <- rowMeans(feat_imp[,c('A', 'B', 'C', 'D', 'E')])  # averaged over classes
+feat_imp <- feat_imp[with(feat_imp, order(importance, decreasing=TRUE)),]
 
 top50 <- rownames(head(feat_imp, 50))
-top30 <- rownames(head(feat_imp, 30))
 top20 <- rownames(head(feat_imp, 20))
-top10 <- rownames(head(feat_imp, 10))
 
-feat_imp[0:10,'average', drop=FALSE]
+feat_imp[0:10,c('feature', 'importance'), drop=FALSE]
 ```
 
 
@@ -160,7 +163,7 @@ feat_acc
 
 ```{r}
 g <- ggplot(data=feat_acc, aes(x=top_n_features, y=accuracy)) +
-  geom_point(size=3) +
+  geom_point(size=5) +
   scale_y_continuous(limits = c(0, 1)) +
   scale_x_continuous(limits = c(1, 50)) +
   xlab('top n features') +
@@ -197,40 +200,47 @@ validation  <- ds[-inTraining,]
 ## Fit model with imputed features
 
 ```{r}
-top_imputed_features <- top20
+top_imputed_features <- top20  # take top 20 features (15 with imputed values)
 
 RFmodel_imp <- trainRF(training_imp, top_imputed_features)
 prob <- get_probabilities(validation_imp, top_imputed_features, RFmodel_imp)
 pred <- get_predictions(prob)
 eval <- evaluate(pred, validation_imp)
-accuracy <- eval[[2]]
-cat('Accuracy of the random forest model trained with the top 20 features (15 with imputed values): ', accuracy)
+accuracy_imp <- eval[[2]]
+cat(sprintf('Accuracy of the random forest model trained with the top 20 features\n(15 with imputed values): %s%%',
+    round(accuracy_imp*100, 2)))
 ```
 
-Using the top 20 features - including 15 with mostly imputed values- gives a worse accuracy than just using the best 16 complete features (see next section). The reason for this is mostly the fact that all columns with missing values consist of 99% missing values and only 1% real values. Therefore, the KNN-imputation model is likely to be inaccurate due to a lack of training data. If the missing values were more sparse, it is conceivable that imputation would improve prediction accuracy. In a real-word dataset it would be more likely to find at least a few missing values in every feature and (column) and maybe even a few missing values for each data point (row). In such cases, imputation is not only likely perform better but also necessary because because excluding all data points with missing values would leave only a fraction of the original dataset.
+Using the top 20 features - including 15 with mostly imputed values- does not give as high an accuracy as just using the best 16 complete features (see next section). The reason for this is most likely the fact that all columns with missing values consist of about 97.9% missing values and only 2.1% real values. Therefore, the KNN-imputation model is likely to be inaccurate due to a lack of training data. If the missing values were more sparse, it is conceivable that imputation would improve prediction accuracy. In a real-word dataset it would be more likely that most features have a least a few missing values but do not consist almost exclusively of missing values (otherwise they would not be used as features). In such cases, imputation is not only likely perform better but also necessary because because excluding all data points with at least one missin value could reduce the dataset to only a fraction of its original size.
 
-## Fit model with real values only
+# Fit model with real values only
 ```{r}
-feat_complete <- feat[feat %in% complete_cols]  # features without missing values
-top_complete_features <- top50[top50 %in% complete_cols]
+top_complete_features <- top50[top50 %in% complete_cols]  # 16 of the top 50 features are complete
 
 RFmodel <- trainRF(training, top_complete_features)
 prob <- get_probabilities(validation, top_complete_features, RFmodel)
 pred <- get_predictions(prob)
 eval <- evaluate(pred, validation)
 accuracy <- eval[[2]]
-cat('Accuracy of the random forest model trained with the top 16 complete features: ', accuracy)
+cat(sprintf('Accuracy of the random forest model trained with the top 16 complete features: %s%%',
+    round(accuracy*100, 2)))
 ```
 
-As the prediction was made on a validation set not used in training, the expected accuracy of the random forest model on new data is roughly the same as the accuracy on the validation set.
+As the prediction was made on a validation set not used in training, the accurady on the validation set provides a reasonable estimate for the expected accuracy of the random forest model on new data.
 
-However, the accuracy on new data could be lower, if the new data is of lower quality (e.g. contains many missing values or is strongly biased). Furthermore, it is important to note that the random element of random forest models leads to random fluctuations of prediction accuracy as well. Even if a new model is built on the same training data, it will have a slightly different prediction accuracy than the old model. To avoid this, a random seed is set at the beginning of the script. This sep ensures that each time a model is trained on the same data, it is exactly the same as the previous one and thus has the same prediction accuracy.
+However, the accuracy on new data may be lower if the new data is of lower quality (e.g. contains many missing values or is strongly biased). Furthermore, it is important to note that the random element of random forest models leads to random fluctuations of prediction accuracy as well. Even if a new model is built on the same training data, it will have a slightly different prediction accuracy than the previous model. To avoid this, a random seed is set at the beginning of the script. This sep ensures that each time a model is trained on the same data, it is exactly the same as the previous one and thus has the same prediction accuracy.
 
 # Predict test-set
 
 ```{r}
 prob <- get_probabilities(test, top_complete_features, RFmodel)  # 20-row test set
 pred <- get_predictions(prob)
+
+# format dataframe for display:
+pred$id <- as.numeric(pred$id)
+pred <- pred[order(pred$id),]
+rownames(pred) <- NULL
+
 cat('Predicions of the 20-row test-set:')
 pred
 ```
@@ -238,7 +248,6 @@ pred
 
 # Conclusion
 
-## Accuracy
-The prediction accuracy is high even though the random forest model is rather simple could be improved in many ways. A possible explanation for the good results is that the fife ways of performing the barbell exercise are quite different from each other. This is not surprising as the study participants have been instructed to either perform the exercise correctly (class A) or deliberately make a specific mistake (class B to E). A more difficult task would be to have all participants try to do the exercise correctly, have an expert judge how well they do and then use this data to train a model to predict how well the barbell exercise is done. The mistakes would not be as obvious as when made on purpose. In such a realistic setting, prediction accuracy would probably be lower than on this data-set.
+The prediction accuracy is high even though the random forest model is rather simple and could be improved in many ways. A possible explanation for the good results is that the five ways of performing the barbell exercise are quite different from each other. This is not surprising as the study participants have been instructed to either perform the exercise correctly (class A) or deliberately make a specific mistake (class B to E). A more difficult task would be to have all participants try to do the exercise correctly, have an expert judge how well they do and then use this data to train a model to predict how well the barbell exercise is done. These mistakes would not be as obvious as when made on purpose. In such a realistic setting, prediction accuracy would probably be lower than on this data-set.
 
-
+In summary, the project presented a good opportunity for studying the basics of applied machine learning and to appreciate the importance of thourough exploratory analysis.
