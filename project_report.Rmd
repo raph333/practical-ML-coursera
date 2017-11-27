@@ -1,9 +1,9 @@
 ---
-title: 'Course Project: summary without code'
+title: 'Course Project: with code'
 output:
-  pdf_document: default
   html_document:
     df_print: paged
+  pdf_document: default
 ---
 
 
@@ -220,7 +220,9 @@ cat(sprintf('Accuracy of the random forest model trained with the top 16 complet
     round(accuracy*100, 2)))
 ```
 
-As the prediction was made on a validation set not used in training, the accurady on the validation set provides a reasonable estimate for the expected accuracy of the random forest model on new data.
+# Accuracy and out of sample error
+
+As the prediction was made on a validation set not used in training, the accurady on the validation set provides a reasonable estimate for the expected accuracy of the random forest model on new data. Hence the out of sample error on new data is expected to be around 1%.
 
 However, the accuracy on new data may be lower if the new data is of lower quality (e.g. contains many missing values or is strongly biased). Furthermore, it is important to note that the random element of random forest models leads to random fluctuations of prediction accuracy as well. Even if a new model is built on the same training data, it will have a slightly different prediction accuracy than the previous model. To avoid this, a random seed is set at the beginning of the script. This sep ensures that each time a model is trained on the same data, it is exactly the same as the previous one and thus has the same prediction accuracy.
 
